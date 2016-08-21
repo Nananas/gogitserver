@@ -44,11 +44,12 @@ var ALLENTRIES []string
 
 const (
 	hook_content = `
-	#!/bin/sh
-	## Hook created by gogitserver
+#!/bin/sh
+## Hook created by gogitserver
 
-	exec git update-server-info
-	pkill -SIGTSTP gogitserver
+git update-server-info
+
+pkill -SIGTSTP gogitserver
 	`
 
 	REPOPATH             = "./gitserver.git"
