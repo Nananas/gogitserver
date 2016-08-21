@@ -1,0 +1,14 @@
+targets:
+  default:
+    deps: '{gopath}/bin/gogitserver'
+    cmd: go install github.com/nananas/gogitserver
+    post: debug
+
+  run:
+    cmd: '{gopath}/bin/gogitserver'
+
+  debug:
+    cmd: '{gopath}/bin/gogitserver -d'
+
+variables:
+  gopath: echo $GOPATH
