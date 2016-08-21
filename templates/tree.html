@@ -5,17 +5,20 @@
 	<link rel="stylesheet" type="text/css" href="/static/styling.css">
 </head>
 <body >
+<div class="index">
+<a href="/">< .. Git Repositories</a>
+</div>
 <div class="container">
 	<div class="repo">
-		<a href="/">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
+		<a href="/{{.RepoName}}">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
 		<div style="float:right">
-		<a href="/git/{{.RepoName}}" >clone</a> ❤ <a href="/git/{{.RepoName}}/archive.tar.gz" >download</a>
+		<a href="/clone/{{.RepoName}}" >clone</a> ❤ <a href="/download/{{.RepoName}}/{{.RepoName}}-master.tar.gz" >download</a>
 		</div>
 	</div>
 	<div class="branch" style="float:left">
 		[{{.BranchName}}] 
 	</div>
-	<div style="margin-left:100px; border-left: 1px solid black; padding-left:10px">
+	<div class="list" >
 		{{if .HasParent}}
 		<div> 
 			<a href="../">..</a>

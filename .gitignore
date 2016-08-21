@@ -1,2 +1,5 @@
 gitserver.git/
+ymake.git/
 *.sublime*
+*.tar.gz
+*.log

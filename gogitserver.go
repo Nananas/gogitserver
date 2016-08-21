@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -10,9 +11,9 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -21,8 +22,9 @@ import (
 )
 
 type TreeServerData struct {
-	RepoName   string
-	BranchName string
+	RepoName    string
+	BranchName  string
+	ArchivePath string
 
 	Files      cleanTree
 	HasParent  bool
@@ -38,9 +40,9 @@ type cleanBranch struct {
 	Info     string
 }
 
-var REPO *git.Repository
-var MAIN *git.Tree
-var ALLENTRIES []string
+// var REPO *git.Repository
+// var MAIN *git.Tree
+// var ALLENTRIES []string
 
 const (
 	hook_content = `
@@ -51,15 +53,43 @@ git update-server-info
 
 pkill -SIGTSTP gogitserver
 	`
-
-	REPOPATH             = "./gitserver.git"
-	REPONAME             = "gitserver.git"
-	REPOPUBLICACCESSPATH = "./gitserver.git"
-	ARCHIVEPATH          = "./gitserver.git/archive.tar.gz"
 )
 
-func setupGitHook() {
-	hookpath := filepath.Join(REPOPATH, "hooks/post-update")
+// var (
+// REPOPATH    string
+// REPONAME    string
+// ARCHIVEPATH string
+// )
+
+type Config struct {
+	Repos map[string]*Repo
+}
+
+type Repo struct {
+	Name        string
+	Path        string
+	Archivepath string
+	Repo        *git.Repository
+	AllEntries  *[]string
+	Tree        *git.Tree
+	Description string
+}
+
+type JConfig struct {
+	Repos []JRepo "json:repos"
+	// ArchiveType string
+}
+
+type JRepo struct {
+	Name        string "json:name"
+	Path        string "json:path"
+	Description string "json:description"
+}
+
+var config Config
+
+func (repo *Repo) setupGitHook() {
+	hookpath := filepath.Join(repo.Path, "hooks/post-update")
 	_, err := os.Stat(hookpath)
 	if err != nil {
 		// log.Println(err)
@@ -78,78 +108,173 @@ func setupGitHook() {
 		}
 	}
 
+	updatecmd := exec.Command("git", "update-server-info")
+	updatecmd.Dir = repo.Path
+	_, err = updatecmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("\tRunning 'git update-server-info' to construct refs")
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGTSTP)
 	go func() {
 		for _ = range c {
 			log.Println("Got signal. updating repo.")
-			loadRepo()
+			for _, v := range config.Repos {
+				v.loadRepo()
+			}
 		}
 	}()
 }
 
-func loadRepo() {
-	r, err := git.OpenRepository(REPOPATH)
+func (repo *Repo) loadRepo() {
+	r, err := git.OpenRepository(repo.Path)
+	if err != nil {
+		// log.Fatal(err)
+		fmt.Println("Could not find git repository at '" + repo.Path + "'")
+	}
+
+	repo.Repo = r
+
+	ci, err := r.GetCommitOfBranch("master")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	REPO = r
+	_, allentries := walkTree(&ci.Tree)
 
-	ci, err := REPO.GetCommitOfBranch("master")
-	if err != nil {
-		log.Fatal(err)
-	}
+	repo.AllEntries = &allentries
 
-	_, ALLENTRIES = walkTree(&ci.Tree)
-
-	sort.Strings(ALLENTRIES)
-
-	MAIN = &ci.Tree
+	// MAIN = &ci.Tree
+	repo.Tree = &ci.Tree
 
 	// err = ci.CreateArchive("./archive", git.AT_ZIP)
-	err = ci.CreateArchive(ARCHIVEPATH, git.AT_TARGZ)
+	err = ci.CreateArchive(repo.Archivepath, git.AT_TARGZ)
 	if err != nil {
 		log.Println(err)
 	}
+}
 
+func loadConfig() Config {
+	home_dir := os.Getenv("HOME")
+	configfile, err := ioutil.ReadFile(filepath.Join(home_dir, ".config/gogitserver.conf"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var jsonconfig JConfig
+
+	err = json.Unmarshal(configfile, &jsonconfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	config = Config{
+		Repos: map[string]*Repo{},
+	}
+
+	for _, r := range jsonconfig.Repos {
+		archpath := r.Path + "-" + "master" + ".tar.gz"
+		if strings.HasSuffix(r.Path, ".git") {
+			archpath = r.Path[:len(r.Path)-4] + "-" + "master" + ".tar.gz"
+		}
+
+		repo := Repo{
+			Name:        r.Name,
+			Path:        r.Path,
+			Description: r.Description,
+			Archivepath: archpath,
+		}
+
+		// config.Repos = append(config.Repos, repo)
+		config.Repos[r.Name] = &repo
+	}
+	// REPONAME = config.Repos[0].Name
+	// REPOPATH = config.Repos[0].Path
+	// REPOPUBLICACCESSPATH = REPOPATH
+	// ARCHIVEPATH = filepath.Join(REPOPATH, REPONAME+"-"+BRANCHNAME+".tar.gz")
+
+	// log.Println(REPONAME, REPOPATH, ARCHIVEPATH)
+
+	return config
 }
 
 func main() {
 
 	log.SetFlags(log.Lshortfile)
+	config := loadConfig()
+	for _, repo := range config.Repos {
+		fmt.Println("Setting up server for " + repo.Name)
+		fmt.Println("\tLocated at " + repo.Path)
+		fmt.Println("\tArchive at " + repo.Archivepath)
+		repo.setupGitHook()
+		repo.loadRepo()
+		http.HandleFunc("/"+repo.Name+"/", handleGit)
+		http.HandleFunc("/clone/"+repo.Name+"/", handleClone)
+		http.HandleFunc("/download/"+repo.Name+"/", handleDownload)
 
-	setupGitHook()
-	loadRepo()
+	}
 
-	// branches, err := REPO.GetBranches()
-	// if err != nil {
-	// log.Fatal(err)
-	// }
-	// log.Println("Branches: ", branches)
 	http.HandleFunc("/", handleIndex)
-	http.HandleFunc("/"+REPONAME+"/", handleGit)
-	http.HandleFunc("/git/"+REPONAME+"/", handleClone)
 	http.HandleFunc("/static/", handleStatic)
+
+	f, err := os.OpenFile("logfile.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+
+	// log.SetOutput(f)
+
 	http.ListenAndServe(":8080", nil)
 }
 
+func getRepoFromURI(uri string) *Repo {
+	name := strings.Split(uri, "/")[0]
+	if repo, ok := config.Repos[name]; ok {
+		return repo
+	}
+
+	return nil
+}
+
 func handleClone(rw http.ResponseWriter, req *http.Request) {
-	// log.Println(req.URL.EscapedPath()[len("/git/"+REPONAME)+1:])
-	p := filepath.Join(REPOPUBLICACCESSPATH, req.URL.EscapedPath()[len("/git/"+REPONAME):])
-	log.Println("CLONE: ", p)
-	// log.Println("CLONE: ", p)
-	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
+	log.Println("CLONE: ", req.URL.EscapedPath())
+	repo := getRepoFromURI(req.URL.EscapedPath()[len("/clone/"):])
+	if repo == nil {
+		http.NotFound(rw, req)
+		return
+	}
+	p := filepath.Join(repo.Path, req.URL.EscapedPath()[len("/clone/"+repo.Name):])
 	http.ServeFile(rw, req, p)
+	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
+}
+
+func handleDownload(rw http.ResponseWriter, req *http.Request) {
+	log.Println("DOWNLOAD: ", req.URL.EscapedPath())
+	repo := getRepoFromURI(req.URL.EscapedPath()[len("/download/"):])
+	if repo == nil {
+		http.NotFound(rw, req)
+		return
+	}
+	// p := filepath.Join(repo.Path, req.URL.EscapedPath()[len("/download/"+repo.Name):])
+	// http.NotFound(rw, req)
+	http.ServeFile(rw, req, repo.Archivepath)
+	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
 }
 
 func handleIndex(rw http.ResponseWriter, req *http.Request) {
-	// log.Println("INDEX")
-	http.Redirect(rw, req, "./"+REPONAME, http.StatusFound)
+	log.Println("INDEX")
+	// http.Redirect(rw, req, "./"+config.Repos[0].Name, http.StatusFound)
+	// http.NotFound(rw, req)
+	// TODO index of all repos
+	rw.Write(CreateIndexHTML())
 }
 
 func handleStatic(rw http.ResponseWriter, req *http.Request) {
-	// log.Println("STATIC")
+	log.Println("STATIC")
 	if req.RequestURI[len(req.RequestURI)-1] == '/' {
 		http.NotFound(rw, req)
 	} else {
@@ -159,41 +284,50 @@ func handleStatic(rw http.ResponseWriter, req *http.Request) {
 }
 
 func handleGit(rw http.ResponseWriter, req *http.Request) {
-	// log.Println("GIT")
-	cleanpath := req.RequestURI[len(REPONAME)+2:]
+	log.Println("GIT: ", req.URL.EscapedPath())
+	repo := getRepoFromURI(req.URL.EscapedPath()[1 : len(req.URL.EscapedPath())-1])
+	if repo == nil {
+		http.NotFound(rw, req)
+		return
+	}
 
-	if cleanpath == "" || !contains(ALLENTRIES, cleanpath) {
-		rw.Write(CreateDirectoryHTML(MAIN, ""))
-	} else if req.RequestURI == "/favicon.ico" {
-		// TODO
-		handle404(rw, req)
+	cleanpath := req.RequestURI[len(repo.Name)+2:]
+
+	if cleanpath == "" || !contains(repo.AllEntries, cleanpath) {
+		rw.Write(CreateDirectoryHTML(repo, repo.Tree, ""))
 	} else {
 		path := cleanpath
 		if path[len(path)-1] == '/' {
-
-			t, err := MAIN.GetTreeEntryByPath(path)
+			t, err := repo.Tree.GetTreeEntryByPath(path)
 			if err != nil {
 				log.Println(err)
 				handle404(rw, req)
 			} else {
-				t, err := REPO.GetTree(t.Id.String())
+				t, err := repo.Repo.GetTree(t.Id.String())
 				if err != nil {
 					log.Fatal(err)
 				}
 
-				rw.Write(CreateDirectoryHTML(t, path))
+				rw.Write(CreateDirectoryHTML(repo, t, path))
 				// log.Println(t.)
 			}
 
 		} else {
 			// requestURI == link path == path of entry
-			b, err := MAIN.GetBlobByPath(path)
+			b, err := repo.Tree.GetBlobByPath(path)
 			if err != nil {
 				log.Println(err)
 				handle404(rw, req)
 			}
 
-			rw.Write(GetBlobContent(b))
+			bytes := GetBlobContent(b)
+			mimetype := http.DetectContentType(bytes)
+			if strings.Contains(mimetype, "text/html") {
+				mimetype = strings.Replace(mimetype, "text/html", "text/plain", 1)
+			}
+
+			rw.Header().Add("content-type", mimetype)
+			rw.Write(bytes)
 		}
 	}
 }
@@ -315,7 +449,25 @@ func GetBlobContent(blob *git.Blob) []byte {
 	return b
 }
 
-func CreateDirectoryHTML(gittree *git.Tree, path string) []byte {
+func CreateIndexHTML() []byte {
+
+	templ := template.New("index.html")
+	t, err := templ.ParseFiles("./templates/index.html")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	buf := bytes.NewBuffer(nil)
+
+	err = t.Execute(buf, config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return buf.Bytes()
+}
+
+func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 
 	tree, _ := walkTree(gittree)
 
@@ -331,9 +483,17 @@ func CreateDirectoryHTML(gittree *git.Tree, path string) []byte {
 
 	buf := bytes.NewBuffer(nil)
 
-	hasparent := MAIN != gittree
+	hasparent := repo.Tree != gittree
 
-	err = t.Execute(buf, TreeServerData{RepoName: REPONAME, BranchName: "master", Files: tree, HasParent: hasparent, ParentPath: parentpath})
+	err = t.Execute(buf, TreeServerData{
+		RepoName:    repo.Name,
+		BranchName:  "master",
+		ArchivePath: repo.Archivepath,
+
+		Files:      tree,
+		HasParent:  hasparent,
+		ParentPath: parentpath,
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -341,8 +501,8 @@ func CreateDirectoryHTML(gittree *git.Tree, path string) []byte {
 	return buf.Bytes()
 }
 
-func contains(list []string, item string) bool {
-	for _, e := range list {
+func contains(list *[]string, item string) bool {
+	for _, e := range *list {
 		if item == e {
 			return true
 		}

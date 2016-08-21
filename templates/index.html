@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Git repositories</title>
+	<link rel="stylesheet" type="text/css" href="/static/styling.css">
+</head>
+<body >
+	<div class="index">
+		Git Repositories
+	</div>
+<div class="container">
+	<div class="list" style="clear:both; display:inline-block; padding:10px">
+		{{range .Repos}} 
+		<div class="item" style="clear:both;"> 
+			<div style="width:30%; float:left; color: #f11792">
+				<a href="./{{.Name}}" style="color:#f11792">{{.Name}}</a>
+			</div>
+			<div style="width:70%; float:left">
+				<p style="margin:0" >{{.Description}}</p>
+			</div>
+		</div>
+		{{end}}
+	</div>
+</div>
+</body>
+</html>

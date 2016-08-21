@@ -2,8 +2,10 @@
 
 [ ] Branch option
 [ ] Do not overwrite existing post-update hook
-[ ] Config file
-[ ] Multiple Repos
-[ ] Serve all text files as text (I'm looking at you HTML)
-[ ] Git clone link
+[o] Config file
+[o] Multiple Repos
+[o] Serve all text files as text (I'm looking at you HTML)
+[o] Git clone 
 [ ] Modification date (relative?)
+[ ] Use something better then SIGTSTP, do not reload all repos when only one changes
+[ ] clone button not redirecting, but only showing url
