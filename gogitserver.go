@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"math"
@@ -17,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"text/template"
 
 	"github.com/gogits/git"
 )
