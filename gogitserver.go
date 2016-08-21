@@ -46,9 +46,9 @@ const (
 	hook_content = `
 	#!/bin/sh
 	## Hook created by gogitserver
-	
+
 	exec git update-server-info
-	exec pkill -SIGTSTP gogitserver
+	pkill -SIGTSTP gogitserver
 	`
 
 	REPOPATH             = "./gitserver.git"
