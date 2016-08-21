@@ -5,4 +5,5 @@
 [ ] Config file
 [ ] Multiple Repos
 [ ] Serve all text files as text (I'm looking at you HTML)
-
+[ ] Git clone link
+[ ] Modification date (relative?)

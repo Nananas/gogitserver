@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -48,17 +49,18 @@ const (
 	pkill -SIGTSTP gogitserver
 	`
 
-	REPOPATH             = "./GITSERVER.git"
-	REPONAME             = "GITSERVER.git"
-	REPOPUBLICACCESSPATH = "./GITSERVER.git"
-	ARCHIVEPATH          = "./GITSERVER.git/archive.tar.gz"
+	REPOPATH             = "./gitserver.git"
+	REPONAME             = "gitserver.git"
+	REPOPUBLICACCESSPATH = "./gitserver.git"
+	ARCHIVEPATH          = "./gitserver.git/archive.tar.gz"
 )
 
 func setupGitHook() {
 	hookpath := filepath.Join(REPOPATH, "hooks/post-update")
 	_, err := os.Stat(hookpath)
 	if err != nil {
-		log.Println(err)
+		// log.Println(err)
+		fmt.Println("post-update hook not found. Creating one...")
 		ioutil.WriteFile(hookpath, []byte(hook_content), 0774)
 	} else {
 		bytes, err := ioutil.ReadFile(hookpath)
