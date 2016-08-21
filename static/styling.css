@@ -1,0 +1,72 @@
+.container {
+	padding-left:50px;
+	padding-top: 50px;
+}
+
+.repo > a:link {	
+    color: #f11792;
+}
+.repo > a:visited {	
+    color: #f11792;
+}
+.repo > a:hover {	
+    color: #000000;
+}
+.repo > a:active{	
+    color: #f11792;
+}
+
+/* unvisited link */
+a {
+	text-decoration: none
+}
+
+a:link {
+    color: black;
+}
+
+/* visited link */
+a:visited {
+    color: black;
+}
+
+/* mouse over link */
+a:hover {
+    color: #f11792;
+}
+
+/* selected link */
+a:active {
+    color: #f11792;
+}
+
+a.dir {
+}
+
+	/* unvisited link */
+a.dir:link {
+    color: #8c0d55;
+}
+
+/* visited link */
+a.dir:visited {
+    color: #8c0d55;/*4f2f41;*/
+}
+
+/* mouse over link */
+a.dir:hover {
+    color: #f11792;
+}
+
+/* selected link */
+a.dir:active {
+    color: #f11792;
+}
+
+html {
+	background-color: #f9f9f9;
+}
+
+.repo {
+	color: #f11792;
+}

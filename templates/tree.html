@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{{.RepoName}}</title>
+	<link rel="stylesheet" type="text/css" href="/static/styling.css">
+</head>
+<body style="font-family:monospace">
+<div class="container">
+	<div class="repo" style="width:100%; height:30px">
+		<a href="/">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
+	</div>
+	<div class="branch" style="float:left">
+		[{{.BranchName}}] 
+	</div>
+	<div style="margin-left:100px; border-left: 1px solid black; padding-left:10px">
+		{{if .HasParent}}
+		<div> 
+			<a href="../">..</a>
+		</div>
+		{{end}}
+		{{range .Files}} 
+		<div> 
+			<a {{if .IsDir}} class="dir" {{end}} href="./{{.Path}}">{{.Name}}</a>
+		</div>
+		{{end}}
+	</div>
+</div>
+</body>
+</html>
