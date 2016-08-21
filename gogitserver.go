@@ -46,7 +46,9 @@ const (
 	hook_content = `
 	#!/bin/sh
 	## Hook created by gogitserver
-	pkill -SIGTSTP gogitserver
+	
+	exec git update-server-info
+	exec pkill -SIGTSTP gogitserver
 	`
 
 	REPOPATH             = "./gitserver.git"
@@ -70,6 +72,7 @@ func setupGitHook() {
 
 		// compare
 		if strings.Compare(hook_content, string(bytes)) != 0 {
+			fmt.Println("Replacing post-update hook.")
 			ioutil.WriteFile(hookpath, []byte(hook_content), 0774)
 		}
 	}
@@ -131,10 +134,12 @@ func main() {
 }
 
 func handleClone(rw http.ResponseWriter, req *http.Request) {
-	p := req.URL.EscapedPath()[len("/git"+REPOPUBLICACCESSPATH):]
+	// log.Println(req.URL.EscapedPath()[len("/git/"+REPONAME)+1:])
+	p := filepath.Join(REPOPUBLICACCESSPATH, req.URL.EscapedPath()[len("/git/"+REPONAME):])
 	log.Println("CLONE: ", p)
+	// log.Println("CLONE: ", p)
 	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
-	http.ServeFile(rw, req, filepath.Join(REPOPUBLICACCESSPATH, p))
+	http.ServeFile(rw, req, p)
 }
 
 func handleIndex(rw http.ResponseWriter, req *http.Request) {
