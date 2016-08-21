@@ -63,6 +63,7 @@ pkill -SIGTSTP gogitserver
 
 type Config struct {
 	Repos map[string]*Repo
+	Port  int
 }
 
 type Repo struct {
@@ -77,7 +78,7 @@ type Repo struct {
 
 type JConfig struct {
 	Repos []JRepo "json:repos"
-	// ArchiveType string
+	Port  int     "json:port"
 }
 
 type JRepo struct {
@@ -93,7 +94,7 @@ func (repo *Repo) setupGitHook() {
 	_, err := os.Stat(hookpath)
 	if err != nil {
 		// log.Println(err)
-		fmt.Println("post-update hook not found. Creating one...")
+		fmt.Println("\tpost-update hook not found. Creating one...")
 		ioutil.WriteFile(hookpath, []byte(hook_content), 0774)
 	} else {
 		bytes, err := ioutil.ReadFile(hookpath)
@@ -191,19 +192,30 @@ func loadConfig() Config {
 		// config.Repos = append(config.Repos, repo)
 		config.Repos[r.Name] = &repo
 	}
-	// REPONAME = config.Repos[0].Name
-	// REPOPATH = config.Repos[0].Path
-	// REPOPUBLICACCESSPATH = REPOPATH
-	// ARCHIVEPATH = filepath.Join(REPOPATH, REPONAME+"-"+BRANCHNAME+".tar.gz")
 
-	// log.Println(REPONAME, REPOPATH, ARCHIVEPATH)
+	config.Port = jsonconfig.Port
+
+	if jsonconfig.Port == 0 {
+		config.Port = 8080
+	}
 
 	return config
 }
 
 func main() {
 
-	log.SetFlags(log.Lshortfile)
+	f, err := os.OpenFile("logfile.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+	if len(os.Args) > 1 && os.Args[1] == "-d" {
+		fmt.Println("Starting in debug mode")
+		log.SetFlags(log.Lshortfile)
+	} else {
+		log.SetOutput(f)
+	}
+
 	config := loadConfig()
 	for _, repo := range config.Repos {
 		fmt.Println("Setting up server for " + repo.Name)
@@ -220,15 +232,9 @@ func main() {
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/static/", handleStatic)
 
-	f, err := os.OpenFile("logfile.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Println(err)
-	}
-	defer f.Close()
+	fmt.Println("Listening from port " + strconv.Itoa(config.Port))
 
-	// log.SetOutput(f)
-
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(":"+strconv.Itoa(config.Port), nil)
 }
 
 func getRepoFromURI(uri string) *Repo {
