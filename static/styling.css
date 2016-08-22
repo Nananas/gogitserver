@@ -107,3 +107,13 @@ html {
 .repo {
 	color: #f11792;
 }
+
+
+#clone_input {
+	display:none;
+	border:0; 
+	padding:0; 
+	margin:0; 
+	outline:0;
+	background-color:#f9f9f9;
+}

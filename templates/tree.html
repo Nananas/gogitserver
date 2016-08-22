@@ -3,6 +3,23 @@
 <head>
 	<title>{{.RepoName}}</title>
 	<link rel="stylesheet" type="text/css" href="/static/styling.css">
+	<script type="text/javascript">
+		function show_clone(a) {
+			var link = document.getElementById("clone_link")
+			var input = document.getElementById("clone_input")
+			link.style.display = 'none'
+			input.value = "http://" + window.location.host + "/clone/{{.RepoName}}"
+			input.style.display = "inline"
+			input.select()
+		}
+
+		function hide_clone(a) {
+			var link = document.getElementById("clone_link")
+			var input = document.getElementById("clone_input")
+			link.style.display = 'inline'
+			input.style.display = "none"
+		}
+	</script>
 </head>
 <body >
 <div class="index">
@@ -12,7 +29,9 @@
 	<div class="repo">
 		<a href="/{{.RepoName}}">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
 		<div style="float:right">
-		<a href="/clone/{{.RepoName}}" >clone</a> ❤ <a href="/download/{{.RepoName}}/{{.RepoName}}-master.tar.gz" >download</a>
+		<a href="#!" onclick="show_clone()" id="clone_link">clone</a>
+		<input type="text" name="clone_url" id="clone_input"  onblur="hide_clone()" >
+		 ❤ <a href="/download/{{.RepoName}}/{{.RepoName}}-master.tar.gz" >download</a>
 		</div>
 	</div>
 	<div class="branch" style="float:left">
