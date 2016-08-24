@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -18,6 +17,8 @@ import (
 	"syscall"
 	"text/template"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/gogits/git"
 )
 
@@ -29,6 +30,9 @@ type TreeServerData struct {
 	Files      cleanTree
 	HasParent  bool
 	ParentPath string
+
+	Header string
+	Footer string
 }
 
 type cleanTree []cleanBranch
@@ -62,8 +66,10 @@ pkill -SIGTSTP gogitserver
 // )
 
 type Config struct {
-	Repos map[string]*Repo
-	Port  int
+	Repos  map[string]*Repo
+	Port   int
+	Header string
+	Footer string
 }
 
 type Repo struct {
@@ -74,17 +80,23 @@ type Repo struct {
 	AllEntries  *[]string
 	Tree        *git.Tree
 	Description string
+	Header      string
+	Footer      string
 }
 
-type JConfig struct {
-	Repos []JRepo "json:repos"
-	Port  int     "json:port"
+type YConfig struct {
+	Repos  []YRepo "yaml:repos"
+	Port   int     "yaml:port"
+	Header string  "yaml:header,omitempty"
+	Footer string  "yaml:footer,omitempty"
 }
 
-type JRepo struct {
-	Name        string "json:name"
-	Path        string "json:path"
-	Description string "json:description"
+type YRepo struct {
+	Name        string "yaml:name"
+	Path        string "yaml:path"
+	Description string "yaml:description,omitempty"
+	Header      string "yaml:,omitempty"
+	Footer      string "yaml:,omitempty"
 }
 
 var config Config
@@ -165,9 +177,9 @@ func loadConfig() Config {
 		log.Fatal(err)
 	}
 
-	var jsonconfig JConfig
+	var yamlconfig YConfig
 
-	err = json.Unmarshal(configfile, &jsonconfig)
+	err = yaml.Unmarshal(configfile, &yamlconfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -176,7 +188,7 @@ func loadConfig() Config {
 		Repos: map[string]*Repo{},
 	}
 
-	for _, r := range jsonconfig.Repos {
+	for _, r := range yamlconfig.Repos {
 		archpath := r.Path + "-" + "master" + ".tar.gz"
 		if strings.HasSuffix(r.Path, ".git") {
 			archpath = r.Path[:len(r.Path)-4] + "-" + "master" + ".tar.gz"
@@ -187,17 +199,22 @@ func loadConfig() Config {
 			Path:        r.Path,
 			Description: r.Description,
 			Archivepath: archpath,
+			Header:      r.Header,
+			Footer:      r.Footer,
 		}
 
 		// config.Repos = append(config.Repos, repo)
 		config.Repos[r.Name] = &repo
 	}
 
-	config.Port = jsonconfig.Port
+	config.Port = yamlconfig.Port
 
-	if jsonconfig.Port == 0 {
+	if yamlconfig.Port == 0 {
 		config.Port = 8080
 	}
+
+	config.Header = yamlconfig.Header
+	config.Footer = yamlconfig.Footer
 
 	return config
 }
@@ -491,6 +508,8 @@ func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 
 	hasparent := repo.Tree != gittree
 
+	log.Println(repo.Footer)
+
 	err = t.Execute(buf, TreeServerData{
 		RepoName:    repo.Name,
 		BranchName:  "master",
@@ -499,7 +518,10 @@ func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 		Files:      tree,
 		HasParent:  hasparent,
 		ParentPath: parentpath,
+		Header:     repo.Header,
+		Footer:     repo.Footer,
 	})
+
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,6 +1,6 @@
 targets:
   default:
-    deps: '{gopath}/bin/gogitserver'
+    # deps: '{gopath}/bin/gogitserver'
     cmd: go install github.com/nananas/gogitserver
     post: debug
 

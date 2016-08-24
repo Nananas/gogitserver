@@ -20,6 +20,7 @@
 			input.style.display = "none"
 		}
 	</script>
+	{{.Header}}
 </head>
 <body >
 <div class="index">
@@ -30,7 +31,7 @@
 		<a href="/{{.RepoName}}">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
 		<div style="float:right">
 		<a href="#!" onclick="show_clone()" id="clone_link">clone</a>
-		<input type="text" name="clone_url" id="clone_input"  onblur="hide_clone()" >
+		<input type="text" name="clone_url" id="clone_input" onblur="hide_clone()" >
 		 ❤ <a href="/download/{{.RepoName}}/{{.RepoName}}-master.tar.gz" >download</a>
 		</div>
 	</div>
@@ -51,5 +52,6 @@
 		{{end}}
 	</div>
 </div>
+{{.Footer}}
 </body>
 </html>
