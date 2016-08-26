@@ -8,7 +8,8 @@
 [o] Git clone 
 [ ] Modification date (relative?)
 [ ] Use something better then SIGTSTP, do not reload all repos when only one changes
-[ ] clone button not redirecting, but only showing url
-[ ] Debug flag: do not log to file
-[ ] Port in config file
+[o] clone button not redirecting, but only showing url
+[o] Debug flag: do not log to file
+[o] Port in config file
+[ ] Better 404?
 

@@ -44,10 +44,6 @@ type cleanBranch struct {
 	Info     string
 }
 
-// var REPO *git.Repository
-// var MAIN *git.Tree
-// var ALLENTRIES []string
-
 const (
 	hook_content = `
 #!/bin/sh
@@ -55,15 +51,10 @@ const (
 
 git update-server-info
 
+# a SIGTSTP signal will be captured by gogitserver to reload its repos
 pkill -SIGTSTP gogitserver
 	`
 )
-
-// var (
-// REPOPATH    string
-// REPONAME    string
-// ARCHIVEPATH string
-// )
 
 type Config struct {
 	Repos  map[string]*Repo
@@ -105,7 +96,6 @@ func (repo *Repo) setupGitHook() {
 	hookpath := filepath.Join(repo.Path, "hooks/post-update")
 	_, err := os.Stat(hookpath)
 	if err != nil {
-		// log.Println(err)
 		fmt.Println("\tpost-update hook not found. Creating one...")
 		ioutil.WriteFile(hookpath, []byte(hook_content), 0774)
 	} else {
@@ -142,10 +132,11 @@ func (repo *Repo) setupGitHook() {
 	}()
 }
 
+// Load repository from disk, saves all file names in the repo tree and create archive.
+//
 func (repo *Repo) loadRepo() {
 	r, err := git.OpenRepository(repo.Path)
 	if err != nil {
-		// log.Fatal(err)
 		fmt.Println("Could not find git repository at '" + repo.Path + "'")
 	}
 
@@ -160,16 +151,17 @@ func (repo *Repo) loadRepo() {
 
 	repo.AllEntries = &allentries
 
-	// MAIN = &ci.Tree
 	repo.Tree = &ci.Tree
 
-	// err = ci.CreateArchive("./archive", git.AT_ZIP)
 	err = ci.CreateArchive(repo.Archivepath, git.AT_TARGZ)
 	if err != nil {
 		log.Println(err)
 	}
 }
 
+// Loads the confiuration file from the default location
+// This configuration file has to exist, obviously
+//
 func loadConfig() Config {
 	home_dir := os.Getenv("HOME")
 	configfile, err := ioutil.ReadFile(filepath.Join(home_dir, ".config/gogitserver.conf"))
@@ -203,7 +195,6 @@ func loadConfig() Config {
 			Footer:      r.Footer,
 		}
 
-		// config.Repos = append(config.Repos, repo)
 		config.Repos[r.Name] = &repo
 	}
 
@@ -226,6 +217,7 @@ func main() {
 		log.Println(err)
 	}
 	defer f.Close()
+
 	if len(os.Args) > 1 && os.Args[1] == "-d" {
 		fmt.Println("Starting in debug mode")
 		log.SetFlags(log.Lshortfile)
@@ -254,6 +246,8 @@ func main() {
 	http.ListenAndServe(":"+strconv.Itoa(config.Port), nil)
 }
 
+// Returns the repository from a string if it exists, nil otherwise
+//
 func getRepoFromURI(uri string) *Repo {
 	name := strings.Split(uri, "/")[0]
 	if repo, ok := config.Repos[name]; ok {
@@ -263,6 +257,8 @@ func getRepoFromURI(uri string) *Repo {
 	return nil
 }
 
+// Git's dumb' HTTP protocol
+//
 func handleClone(rw http.ResponseWriter, req *http.Request) {
 	log.Println("CLONE: ", req.URL.EscapedPath())
 	repo := getRepoFromURI(req.URL.EscapedPath()[len("/clone/"):])
@@ -272,9 +268,10 @@ func handleClone(rw http.ResponseWriter, req *http.Request) {
 	}
 	p := filepath.Join(repo.Path, req.URL.EscapedPath()[len("/clone/"+repo.Name):])
 	http.ServeFile(rw, req, p)
-	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
 }
 
+// Basic tar.gz archive download
+//
 func handleDownload(rw http.ResponseWriter, req *http.Request) {
 	log.Println("DOWNLOAD: ", req.URL.EscapedPath())
 	repo := getRepoFromURI(req.URL.EscapedPath()[len("/download/"):])
@@ -282,20 +279,19 @@ func handleDownload(rw http.ResponseWriter, req *http.Request) {
 		http.NotFound(rw, req)
 		return
 	}
-	// p := filepath.Join(repo.Path, req.URL.EscapedPath()[len("/download/"+repo.Name):])
-	// http.NotFound(rw, req)
+
 	http.ServeFile(rw, req, repo.Archivepath)
-	// log.Println(req.URL.EscapedPath()) log.Println(req.URL.Path)
 }
 
+// Show list of all repositories
+//
 func handleIndex(rw http.ResponseWriter, req *http.Request) {
 	log.Println("INDEX")
-	// http.Redirect(rw, req, "./"+config.Repos[0].Name, http.StatusFound)
-	// http.NotFound(rw, req)
-	// TODO index of all repos
 	rw.Write(CreateIndexHTML())
 }
 
+// Static file serving
+//
 func handleStatic(rw http.ResponseWriter, req *http.Request) {
 	log.Println("STATIC")
 	if req.RequestURI[len(req.RequestURI)-1] == '/' {
@@ -306,6 +302,10 @@ func handleStatic(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Serves the file tree if a directory is requested
+// Serves the file if the requested file is found in the presaved git tree (Repo.AllEnties)
+// Otherwise returns a 404
+//
 func handleGit(rw http.ResponseWriter, req *http.Request) {
 	log.Println("GIT: ", req.URL.EscapedPath())
 	repo := getRepoFromURI(req.URL.EscapedPath()[1 : len(req.URL.EscapedPath())-1])
@@ -332,7 +332,6 @@ func handleGit(rw http.ResponseWriter, req *http.Request) {
 				}
 
 				rw.Write(CreateDirectoryHTML(repo, t, path))
-				// log.Println(t.)
 			}
 
 		} else {
@@ -343,6 +342,8 @@ func handleGit(rw http.ResponseWriter, req *http.Request) {
 				handle404(rw, req)
 			}
 
+			// serve HTML files as plain text
+			//
 			bytes := GetBlobContent(b)
 			mimetype := http.DetectContentType(bytes)
 			if strings.Contains(mimetype, "text/html") {
@@ -355,59 +356,14 @@ func handleGit(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Basic 404 error
+//
 func handle404(rw http.ResponseWriter, req *http.Request) {
 	http.NotFound(rw, req)
 }
 
 func walkTree(tree *git.Tree) (cleanTree, []string) {
-	// entries := tree.ListEntries()
-
-	// clean := cleanTree{}
-	// clean, allentries := _walkTree(tree, "")
 	return _walkTree(tree, "")
-
-	// clean _walkTree(tree, "")
-
-	// allentries := []string{}
-
-	// for _, e := range entries {
-
-	// 	if e.IsDir() {
-
-	// 		t, err := tree.SubTree(e.Name())
-	// 		if err != nil {
-	// 			log.Fatal(err)
-	// 		}
-
-	// 		allentries = append(allentries, e.Name()+"/")
-
-	// 		subtree, subentries := _walkTree(t, e.Name())
-	// 		allentries = append(allentries, subentries...)
-	// 		clean = append(clean, cleanBranch{
-	// 			IsDir:    true,
-	// 			Name:     e.Name(),
-	// 			Branches: subtree,
-	// 			Path:     e.Name() + "/",
-	// 			Info:     "-",
-	// 		})
-
-	// 	} else {
-
-	// 		clean = append(clean, cleanBranch{
-	// 			IsDir:    false,
-	// 			Name:     e.Name(),
-	// 			Branches: nil,
-	// 			Path:     e.Name(),
-	// 			Info:     toHumanReadableString(e.Size()),
-	// 		})
-
-	// 		allentries = append(allentries, e.Name())
-
-	// 	}
-
-	// }
-
-	// return clean, allentries
 }
 
 func _walkTree(tree *git.Tree, path string) ([]cleanBranch, []string) {
@@ -552,6 +508,5 @@ func toHumanReadableString(size int64) string {
 	ii := int(b)
 	s := math.Pow(1000, float64(ii))
 
-	// log.Println(size, b, int(float64(size)/s), suffixes[ii])
 	return strconv.Itoa(int(float64(size)/s)) + " " + suffixes[ii]
 }
