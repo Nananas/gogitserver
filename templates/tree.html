@@ -28,7 +28,7 @@
 </div>
 <div class="container">
 	<div class="repo">
-		<a href="/{{.RepoName}}">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
+		<a href="/repo/{{.RepoName}}">{{.RepoName}}</a>{{if .HasParent }} > .{{.ParentPath}} {{end}}
 		<div style="float:right">
 		<a href="#!" onclick="show_clone()" id="clone_link">clone</a>
 		<input type="text" name="clone_url" id="clone_input" onblur="hide_clone()" >

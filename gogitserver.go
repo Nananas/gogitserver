@@ -16,6 +16,7 @@ import (
 	"strings"
 	"syscall"
 	"text/template"
+	"time"
 
 	"gopkg.in/yaml.v2"
 
@@ -106,7 +107,9 @@ func (repo *Repo) setupGitHook() {
 
 		// compare
 		if strings.Compare(hook_content, string(bytes)) != 0 {
-			fmt.Println("Replacing post-update hook.")
+			t := time.Now().Format("2006-02-01-15u04")
+			fmt.Println("Replacing post-update hook. Backup at post-update.backup." + t)
+			os.Rename(repo.Path+"/hooks/post-update", repo.Path+"/hooks/post-update.backup."+t)
 			ioutil.WriteFile(hookpath, []byte(hook_content), 0774)
 		}
 	}
@@ -120,16 +123,6 @@ func (repo *Repo) setupGitHook() {
 
 	fmt.Println("\tRunning 'git update-server-info' to construct refs")
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGTSTP)
-	go func() {
-		for _ = range c {
-			log.Println("Got signal. updating repo.")
-			for _, v := range config.Repos {
-				v.loadRepo()
-			}
-		}
-	}()
 }
 
 // Load repository from disk, saves all file names in the repo tree and create archive.
@@ -210,6 +203,43 @@ func loadConfig() Config {
 	return config
 }
 
+// Will Setup the git hook, load the repository and populate the fields of the
+// repo structs
+//
+func (c *Config) loadRepos() {
+
+	for _, repo := range config.Repos {
+		fmt.Println("Setting up repo " + repo.Name)
+		fmt.Println("\tLocated at " + repo.Path)
+		fmt.Println("\tArchive at " + repo.Archivepath)
+		repo.setupGitHook()
+		repo.loadRepo()
+	}
+}
+
+// Compares the old and new config and
+// renames the current post-update hook to post-update.disabled.[current-time]
+// if an old repo is not in the new config
+//
+func disableRepoHooks(oldc, newc Config) {
+
+	for _, repo := range oldc.Repos {
+		isinnew := false
+		for _, nr := range newc.Repos {
+			if repo.Path == nr.Path {
+				isinnew = true
+			}
+		}
+
+		if !isinnew {
+			t := time.Now().Format("2006-02-01-15u04")
+			fmt.Println("Disabling git hook post-update for " + repo.Name + ": renaming to post-update.disabled" + t)
+			os.Rename(repo.Path+"/hooks/post-update", repo.Path+"/hooks/post-update.disabled."+t)
+		}
+	}
+
+}
+
 func main() {
 
 	f, err := os.OpenFile("logfile.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -226,17 +256,37 @@ func main() {
 	}
 
 	config := loadConfig()
-	for _, repo := range config.Repos {
-		fmt.Println("Setting up server for " + repo.Name)
-		fmt.Println("\tLocated at " + repo.Path)
-		fmt.Println("\tArchive at " + repo.Archivepath)
-		repo.setupGitHook()
-		repo.loadRepo()
-		http.HandleFunc("/"+repo.Name+"/", handleGit)
-		http.HandleFunc("/clone/"+repo.Name+"/", handleClone)
-		http.HandleFunc("/download/"+repo.Name+"/", handleDownload)
+	config.loadRepos()
 
-	}
+	c := make(chan os.Signal, 1)
+	// CUSTOM SIGNALS:
+	// SIGTSTP: reload repositories
+	// SIGHUP: send by Upstart: reload configuration
+	signal.Notify(c, syscall.SIGTSTP, syscall.SIGHUP)
+	go func() {
+		for s := range c {
+			switch s {
+			case syscall.SIGTSTP:
+				fmt.Println("[SIGTSTP]: Reloading repos.")
+				for _, v := range config.Repos {
+					v.loadRepo()
+				}
+			case syscall.SIGHUP:
+				fmt.Println("[SIGHUP]: Reloading config.")
+
+				oldconfig := config
+
+				config = loadConfig()
+				disableRepoHooks(oldconfig, config)
+				config.loadRepos()
+
+			}
+		}
+	}()
+
+	http.HandleFunc("/repo/", handleGit)
+	http.HandleFunc("/clone/", handleClone)
+	http.HandleFunc("/download/", handleDownload)
 
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/static/", handleStatic)
@@ -286,7 +336,12 @@ func handleDownload(rw http.ResponseWriter, req *http.Request) {
 // Show list of all repositories
 //
 func handleIndex(rw http.ResponseWriter, req *http.Request) {
-	log.Println("INDEX")
+	log.Println("INDEX", req.RequestURI)
+	if req.URL.EscapedPath() != "/" {
+		http.NotFound(rw, req)
+		return
+	}
+
 	rw.Write(CreateIndexHTML())
 }
 
@@ -308,51 +363,75 @@ func handleStatic(rw http.ResponseWriter, req *http.Request) {
 //
 func handleGit(rw http.ResponseWriter, req *http.Request) {
 	log.Println("GIT: ", req.URL.EscapedPath())
-	repo := getRepoFromURI(req.URL.EscapedPath()[1 : len(req.URL.EscapedPath())-1])
+
+	if req.URL.EscapedPath() == "/repo/" {
+		http.Redirect(rw, req, "/", http.StatusSeeOther)
+		return
+	}
+
+	repo := getRepoFromURI(req.URL.EscapedPath()[6:len(req.URL.EscapedPath())])
 	if repo == nil {
 		http.NotFound(rw, req)
 		return
 	}
 
-	cleanpath := req.RequestURI[len(repo.Name)+2:]
+	basepath := "/repo/" + repo.Name + "/"
 
-	if cleanpath == "" || !contains(repo.AllEntries, cleanpath) {
+	// make sure a / is added to the url if the base tree is served
+	//
+	reql := len(req.URL.EscapedPath())
+	basel := len(basepath)
+	if reql < basel {
+		http.Redirect(rw, req, basepath, http.StatusSeeOther)
+		return
+	}
+
+	// Serve Base Tree
+	if reql == basel {
 		rw.Write(CreateDirectoryHTML(repo, repo.Tree, ""))
-	} else {
-		path := cleanpath
-		if path[len(path)-1] == '/' {
-			t, err := repo.Tree.GetTreeEntryByPath(path)
-			if err != nil {
-				log.Println(err)
-				handle404(rw, req)
-			} else {
-				t, err := repo.Repo.GetTree(t.Id.String())
-				if err != nil {
-					log.Fatal(err)
-				}
+		return
+	}
 
-				rw.Write(CreateDirectoryHTML(repo, t, path))
-			}
+	path := req.RequestURI[len(repo.Name)+7:]
 
+	if !contains(repo.AllEntries, path) {
+		http.Redirect(rw, req, basepath, http.StatusPermanentRedirect)
+		return
+	}
+
+	log.Println(path)
+	if path[len(path)-1] == '/' {
+		t, err := repo.Tree.GetTreeEntryByPath(path)
+		if err != nil {
+			log.Println(err)
+			handle404(rw, req)
 		} else {
-			// requestURI == link path == path of entry
-			b, err := repo.Tree.GetBlobByPath(path)
+			t, err := repo.Repo.GetTree(t.Id.String())
 			if err != nil {
-				log.Println(err)
-				handle404(rw, req)
+				log.Fatal(err)
 			}
 
-			// serve HTML files as plain text
-			//
-			bytes := GetBlobContent(b)
-			mimetype := http.DetectContentType(bytes)
-			if strings.Contains(mimetype, "text/html") {
-				mimetype = strings.Replace(mimetype, "text/html", "text/plain", 1)
-			}
-
-			rw.Header().Add("content-type", mimetype)
-			rw.Write(bytes)
+			rw.Write(CreateDirectoryHTML(repo, t, path))
 		}
+
+	} else {
+		// requestURI == link path == path of entry
+		b, err := repo.Tree.GetBlobByPath(path)
+		if err != nil {
+			log.Println(err)
+			handle404(rw, req)
+		}
+
+		// serve HTML files as plain text
+		//
+		bytes := GetBlobContent(b)
+		mimetype := http.DetectContentType(bytes)
+		if strings.Contains(mimetype, "text/html") {
+			mimetype = strings.Replace(mimetype, "text/html", "text/plain", 1)
+		}
+
+		rw.Header().Add("content-type", mimetype)
+		rw.Write(bytes)
 	}
 }
 
@@ -362,6 +441,7 @@ func handle404(rw http.ResponseWriter, req *http.Request) {
 	http.NotFound(rw, req)
 }
 
+//
 func walkTree(tree *git.Tree) (cleanTree, []string) {
 	return _walkTree(tree, "")
 }
@@ -412,6 +492,8 @@ func _walkTree(tree *git.Tree, path string) ([]cleanBranch, []string) {
 
 }
 
+// Returns the content of the blob (file) in the git repository
+//
 func GetBlobContent(blob *git.Blob) []byte {
 	r, err := blob.Data()
 	if err != nil {
@@ -428,6 +510,8 @@ func GetBlobContent(blob *git.Blob) []byte {
 	return b
 }
 
+// Constructs the homepage html
+//
 func CreateIndexHTML() []byte {
 
 	templ := template.New("index.html")
@@ -446,6 +530,8 @@ func CreateIndexHTML() []byte {
 	return buf.Bytes()
 }
 
+// Constructs a directory tree html file
+//
 func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 
 	tree, _ := walkTree(gittree)
@@ -463,8 +549,6 @@ func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 	buf := bytes.NewBuffer(nil)
 
 	hasparent := repo.Tree != gittree
-
-	log.Println(repo.Footer)
 
 	err = t.Execute(buf, TreeServerData{
 		RepoName:    repo.Name,
@@ -485,6 +569,8 @@ func CreateDirectoryHTML(repo *Repo, gittree *git.Tree, path string) []byte {
 	return buf.Bytes()
 }
 
+// helper function
+//
 func contains(list *[]string, item string) bool {
 	for _, e := range *list {
 		if item == e {
@@ -495,6 +581,9 @@ func contains(list *[]string, item string) bool {
 	return false
 }
 
+// helper function
+// converts integer to human readable file size, with B, KB etc
+//
 func toHumanReadableString(size int64) string {
 	suffixes := []string{
 		" B", "KB", "MB", "GB",
