@@ -10,7 +10,7 @@
 	- File serving of bare repo files
 	- Archive download
 	- Clone link ('dumb HTTP')
-	- JSON config file...
+	- YAML config file...
 
 What is needed?
 
@@ -24,22 +24,21 @@ Run with `-d` flag to enable console debug logging, otherwise logging will be do
 example config file:
 
 ```
-{
-	"repos":[
-		{
-			"name":"GitServer",
-			"path":"./gitserver.git",
-			"description": "Minimal server for git repos. Only shows latest commit tree. Dumb http clone and archive download supported."
-		}, 
-		{
-			"name":"ymake",
-			"path":"./ymake.git",
-			"description": "YAML style makefile alternative. [Alpha]<a href=\"test\">test</a>"
-		}
+header: |
+    <script>
+    	// include analytics script here
+    </script>
 
-	], 
-	"port":5888
-}
+port: 5888
+repos: 
+  - 
+  description: "Minimal server for git repos. Only shows latest commit tree. Dumb http clone and archive download supported."
+    name: GitServer
+    path: ./gitserver.git
+    footer: |
+      <div class="repo" style="position:absolute; bottom:50px; left:0; right:0; text-align:center; width:50%; margin:auto">
+      <a href="http://github.com/Nananas/gogitserver" style="">Github</a>
+      </div
 ```
 
 ([YMakefile](https://github.com/Nananas/ymake) is used to make.)
