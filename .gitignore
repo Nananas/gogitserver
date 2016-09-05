@@ -3,3 +3,5 @@ ymake.git/
 *.sublime*
 *.tar.gz
 *.log
+package/
+
