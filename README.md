@@ -12,12 +12,13 @@
 	- Clone link ('dumb HTTP')
 	- YAML config file...
 
-What is needed?
+What files are packaged?
 
 	- ./static/styling.css
 	- ./templates/tree.html
 	- ./templates/index.html
 	- ~/.config/gogitserver.conf
+	- gogitserver binary
 
 Run with `-d` flag to enable console debug logging, otherwise logging will be done to a file called `./logfile.log`.
 
@@ -40,5 +41,3 @@ repos:
       <a href="http://github.com/Nananas/gogitserver" style="">Github</a>
       </div
 ```
-
-([YMakefile](https://github.com/Nananas/ymake) is used to make.)
